@@ -224,9 +224,9 @@ sub write_sqlfile {
     my $self = shift;
 
     $self->write_file("sql/mysql.sql", <<'...');
-DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS user;
 
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS user (
     id           INTEGER NOT NULL AUTO_INCREMENT,  
     name         CHAR(32) NOT NULL UNIQUE,  
     created_at   DATETIME Default NULL,
@@ -472,7 +472,7 @@ use Teng::Schema::Declare;
 base_row_class '<% $module %>::DB::Row';
 
 table {
-    name 'users';
+    name 'user';
     pk 'id';
     columns qw(id name created_at updated_at);
 };
@@ -498,8 +498,8 @@ sub c {
 1;
 ...
 
-    $self->write_file("lib/<<PATH>>/Model/Users.pm", <<'...');
-package <% $module %>::Model::Users;
+    $self->write_file("lib/<<PATH>>/Model/User.pm", <<'...');
+package <% $module %>::Model::User;
 use strict;
 use warnings;
 use utf8;
@@ -508,13 +508,13 @@ use parent qw/<% $module %>::Model/;
 sub lookup_by_id {
     my ($class, $id) = @_;
 
-    return $class->c->db->single('users', +{ id => $id });
+    return $class->c->db->single('user', +{ id => $id });
 }
 
 sub lookup_by_name {
     my ($class, $name) = @_;
 
-    return $class->c->db->single('users', +{ name => $name });
+    return $class->c->db->single('user', +{ name => $name });
 }
 
 1;
