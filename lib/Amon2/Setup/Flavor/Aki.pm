@@ -24,8 +24,6 @@ sub run {
 
     $self->write_t;
 
-    $self->write_xt;
-
     $self->write_lib;
 
     $self->write_dotfiles;
@@ -37,18 +35,12 @@ sub run {
 sub write_tmpl {
     my $self = shift;
 
-    $self->write_file("tmpl/wrapper/common/layout.tx", <<'...');
+    $self->write_file("tmpl/wrapper/app/layout.tx", <<'...');
 <!doctype html>
 <html>
 <head>
-    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
     <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title><: $title || '<%= $dist %>' :></title>
-    <meta http-equiv="Content-Style-Type" content="text/css" />
-    <meta http-equiv="Content-Script-Type" content="text/javascript" />
-    <meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"/>
-    <meta name="format-detection" content="telephone=no" />
     <script src="<: uri_for('/static/default/js/jquery-2.1.0.min.js') :>"></script>
     <script src="<: uri_for('/static/default/bootstrap/js/bootstrap.js') :>"></script>
     <link href="<: uri_for('/static/default/bootstrap/css/bootstrap.css') :>" rel="stylesheet" type="text/css" />
@@ -195,6 +187,8 @@ sub write_cpanfile {
         'HTTP::Session2'                  => '0.04',
         'Config::Pit'                     => 0,
         'Module::Find'                    => 0,
+        'DateTimeX::Factory'              => 0,
+        'Data::Validator'                 => 0,
     });
 }
 
@@ -223,7 +217,7 @@ Config::Pit::set('<% $module %>.com.test', data => {
 sub write_sqlfile {
     my $self = shift;
 
-    $self->write_file("sql/mysql.sql", <<'...');
+    $self->write_file("db/schema.sql", <<'...');
 DROP TABLE IF EXISTS user;
 
 CREATE TABLE IF NOT EXISTS user (
@@ -261,10 +255,8 @@ body {
 ...
 
     $self->write_file("static/css/app/home/index.css", '');
-    $self->write_file("static/js/main.js", '');
     $self->write_file("static/js/app/home/index.js", '');
     $self->write_file("static/robots.txt", '');
-    $self->mkpath("static/img");
 }
 
 sub write_t {
@@ -272,7 +264,23 @@ sub write_t {
 
     $self->render_file('t/00_compile.t', 'Basic/t/00_compile.t');
 
-    $self->write_file("t/01_root.t", <<'...');
+    $self->write_file("t/01_setup.t", <<'...');
+use strict;
+use warnings;
+use utf8;
+use t::Util;
+use Test::More;
+
+subtest 'db_cleanup' => sub {
+    db_cleanup();
+
+    ok 1;
+};
+
+done_testing;
+...
+
+    $self->write_file("t/02_root.t", <<'...');
 use strict;
 use warnings;
 use utf8;
@@ -295,7 +303,7 @@ test_psgi
 done_testing;
 ...
 
-    $self->write_file("t/02_mech.t", <<'...');
+    $self->write_file("t/03_mech.t", <<'...');
 use strict;
 use warnings;
 use utf8;
@@ -313,7 +321,7 @@ $mech->get_ok('/');
 done_testing;
 ...
 
-    $self->write_file("t/03_assets.t", <<'...');
+    $self->write_file("t/04_assets.t", <<'...');
 use strict;
 use warnings;
 use utf8;
@@ -336,7 +344,6 @@ test_psgi
 
 done_testing;
 ...
-    $self->render_file('t/06_jshint.t', 'Basic/t/06_jshint.t');
 
     $self->write_file("t/Util.pm", <<'...');
 package t::Util;
@@ -353,10 +360,12 @@ use File::Basename;
 use lib File::Spec->rel2abs(File::Spec->catdir(dirname(__FILE__), '..', 'lib'));
 use parent qw/Exporter/;
 use Test::More 0.98;
+use <% $module %>;
 
 our @EXPORT = qw(
     slurp
-
+    db_cleanup
+    c
 );
 
 {
@@ -381,22 +390,17 @@ sub slurp {
 }
 
 # initialize database
-#use <% $module %>;
-#{
-#    unlink 'db/test.db' if -f 'db/test.db';
-#    system("sqlite3 db/test.db < sql/sqlite.sql");
-#}
+sub db_cleanup {
+    system("cat db/schema.sql  | mysql -uroot fallwide_blog_test");
+    system("cat db/trigger.sql | mysql -uroot fallwide_blog_test");
+}
 
+sub c {
+    fallwide->bootstrap;
+}
 
 1;
 ...
-}
-
-sub write_xt {
-    my $self = shift;
-
-    $self->render_file( 'xt/01_pod.t',    'Minimum/xt/01_pod.t' );
-    $self->render_file( 'xt/02_perlcritic.t', 'Basic/xt/02_perlcritic.t' );
 }
 
 sub write_lib {
@@ -411,20 +415,34 @@ our $VERSION='0.01';
 use 5.008001;
 use <% $module %>::DB::Schema;
 use <% $module %>::DB;
+use DateTimeX::Factory;
+use Class::Load;
 
 use parent qw/Amon2/;
-# Enable project local mode.
-__PACKAGE__->make_local_context();
 
 my $schema = <% $module %>::DB::Schema->instance;
 
+# 時刻
+sub dt {
+    my $c = shift;
+
+    if (!exists $c->{dt}) {
+        $c->{dt} = DateTimeX::Factory->new(
+            time_zone => 'Asia/Tokyo',
+        );
+    }
+
+    return $c->{dt};
+}
+
+# モデル
 sub model {
     my ($c, $model_name) = @_;
 
-    my $module_name = '<% $module %>::Model::' . $model_name;
-    eval "require $module_name";
+    my $model = __PACKAGE__ . "::Model::" . $model_name;
+    Class::Load::load_class($model);
 
-    return $module_name->new;
+    return $model->new;
 }
 
 sub db {
@@ -485,14 +503,11 @@ package <% $module %>::Model;
 use strict;
 use warnings;
 use utf8;
-use parent qw/<% $module %>/;
+use Amon2::Declare;
+use Data::Validator;
 
 sub new {
-    shift
-}
-
-sub c {
-    <% $module %>->context
+    shift;
 }
 
 1;
@@ -503,6 +518,7 @@ package <% $module %>::Model::User;
 use strict;
 use warnings;
 use utf8;
+use 5.16.2;
 use parent qw/<% $module %>::Model/;
 
 sub lookup_by_id {
@@ -599,7 +615,7 @@ use Amon2::Web::Dispatcher::RouterBoom;
 useall qw/ <% $module %>::Web::App::C /;
 
 base '<% $module %>::Web::App::C';
-get '/'            => 'Home#index';
+get '/' => 'Home#index';
 
 1;
 ...
@@ -630,7 +646,6 @@ sub write_dotfiles {
     my $self = shift;
 
     $self->render_file('.gitignore', 'Basic/dot.gitignore');
-    $self->render_file('.proverc', 'Basic/dot.proverc');
 }
 
 1;

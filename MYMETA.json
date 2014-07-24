@@ -41,7 +41,11 @@
    "resources" : {
       "license" : [
          "http://dev.perl.org/licenses/"
-      ]
+      ],
+      "repository" : {
+         "type" : "git",
+         "url" : "git://github.com/akihiro0228/Amon2-Setup-Flavor-Aki.git"
+      }
    },
    "version" : "0.01"
 }
