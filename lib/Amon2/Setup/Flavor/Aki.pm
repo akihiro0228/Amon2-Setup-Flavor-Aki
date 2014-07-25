@@ -45,7 +45,7 @@ sub write_tmpl {
     <script src="<: uri_for('/static/default/bootstrap/js/bootstrap.js') :>"></script>
     <link href="<: uri_for('/static/default/bootstrap/css/bootstrap.css') :>" rel="stylesheet" type="text/css" />
     <script src="<: uri_for('/static/default/js/xsrf-token.js') :>"></script>
-    <link href="<: static_file('/static/css/common/main.css') :>" rel="stylesheet" type="text/css" media="screen" />
+    <link href="<: static_file('/static/css/main.css') :>" rel="stylesheet" type="text/css" media="screen" />
     : if ($css_path) {
     <link href="<: static_file('/static/css/' ~ $css_path) :>" rel="stylesheet" type="text/css" media="screen" />
     :}
@@ -58,20 +58,29 @@ sub write_tmpl {
 </head>
 <body>
 
+<header>
+    :include "wrapper/app/header.tx";
+</header>
+
 <div class="container">
     <div id="main">
         <: block content -> { } :>
     </div>
 </div>
 
+<footer>
+    :include "wrapper/app/footer.tx";
+</footer>
+
 </body>
 </html>
 ...
 
-    $self->render_file( "tmpl/wrapper/pager.tx", "Basic/tmpl/include/pager.tx" );
+    $self->write_file("tmpl/wrapper/app/header.tx", '');
+    $self->write_file("tmpl/wrapper/app/footer.tx", '');
 
     $self->write_file("tmpl/app/home/index.tx", <<'...');
-: cascade "wrapper/common/layout.tx" { title => '<% $module %>' }
+: cascade "wrapper/app/layout.tx" { title => '<% $module %>' }
 
 : override content -> {
 
@@ -118,16 +127,16 @@ use warnings;
 use Config::Pit;
 
 my $config = pit_get('<% $module %>.com', require => {
-	'database'        => 'hoge',
-	'username'        => 'hoge',
-	'password'        => 'hoge',
+    'database' => 'hoge',
+    'username' => 'hoge',
+    'password' => 'hoge',
 });
 
 return {
-	DB   => [
-		$config->{database},
-		$config->{username},
-		$config->{password},
+    DB   => [
+        $config->{database},
+        $config->{username},
+        $config->{password},
     ],
 };
 ...
@@ -138,16 +147,16 @@ use warnings;
 use Config::Pit;
 
 my $config = pit_get('<% $module %>.com', require => {
-	'database'        => 'hoge',
-	'username'        => 'hoge',
-	'password'        => 'hoge',
+    'database' => 'hoge',
+    'username' => 'hoge',
+    'password' => 'hoge',
 });
 
 return {
-	DB   => [
-		$config->{database},
-		$config->{username},
-		$config->{password},
+    DB   => [
+        $config->{database},
+        $config->{username},
+        $config->{password},
     ],
 };
 ...
@@ -158,16 +167,16 @@ use warnings;
 use Config::Pit;
 
 my $config = pit_get('<% $module %>.com.test', require => {
-	'database'        => 'hoge',
-	'username'        => 'hoge',
-	'password'        => 'hoge',
+    'database' => 'hoge',
+    'username' => 'hoge',
+    'password' => 'hoge',
 });
 
 return {
-	DB   => [
-		$config->{database},
-		$config->{username},
-		$config->{password},
+    DB   => [
+        $config->{database},
+        $config->{username},
+        $config->{password},
     ],
 };
 ...
@@ -201,13 +210,13 @@ use warnings;
 use Config::Pit;
 
 Config::Pit::set('<% $module %>.com', data => {
-    database => 'DBI:mysql:[host_name]:[server_name]:[port_number]',
+    database => 'DBI:mysql:<%= $dist %>:localhost:3306',
     username => 'user_name',
     password => 'password',
 });
 
 Config::Pit::set('<% $module %>.com.test', data => {
-    database => 'DBI:mysql:[host_name]:[server_name]:[port_number]',
+    database => 'DBI:mysql:<%= $dist %>_test:localhost:3306',
     username => 'user_name',
     password => 'password',
 });
@@ -221,33 +230,43 @@ sub write_sqlfile {
 DROP TABLE IF EXISTS user;
 
 CREATE TABLE IF NOT EXISTS user (
-    id           INTEGER NOT NULL AUTO_INCREMENT,  
-    name         CHAR(32) NOT NULL UNIQUE,  
-    created_at   DATETIME Default NULL,
-    updated_at   TIMESTAMP NOT NULL Default CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+    id           INTEGER     NOT NULL AUTO_INCREMENT,  
+    name         VARCHAR(32) NOT NULL                COMMENT "名前",  
+    created_at   DATETIME             DEFAULT NULL,
+    updated_at   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE      (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT "ユーザー管理";
+...
+
+    $self->write_file("db/trigger.sql", <<'...');
+DROP TRIGGER IF EXISTS before_user;
+
+DELIMITER |
+CREATE TRIGGER before_user BEFORE INSERT ON user FOR EACH ROW
+BEGIN
+    SET NEW.created_at = NOW();
+END;
+|
+DELIMITER ;
+...
+
+    $self->write_file("db/setup.sh", <<'...');
+#!/bin/zsh
+
+mysql -uroot -e 'CREATE DATABASE IF NOT EXISTS <%= $dist %>      DEFAULT CHARACTER SET utf8;'
+mysql -uroot -e 'CREATE DATABASE IF NOT EXISTS <%= $dist %>_test DEFAULT CHARACTER SET utf8;'
+
+cat schema.sql  | mysql -uroot <%= $dist %>
+cat schema.sql  | mysql -uroot <%= $dist %>_test
+cat trigger.sql | mysql -uroot <%= $dist %>
+cat trigger.sql | mysql -uroot <%= $dist %>_test
 ...
 }
 
 sub write_static {
     my $self = shift;
 
-    my %status = (
-        '503' => 'Service Unavailable',
-        '502' => 'Bad Gateway',
-        '500' => 'Internal Server Error',
-        '504' => 'Gateway Timeout',
-        '404' => 'Not Found'
-    );
-    while (my ($status, $status_message) = each %status) {
-        $self->render_file(
-            "static/$status.html",
-            "Basic/static/__STATUS__.html",
-            { status => $status, status_message => $status_message }
-        );
-    }
-       
     $self->write_file("static/css/main.css", <<'...');
 body {
     font-family: "Hiragino Maru Gothic ProN", Meiryo, fantasy;
@@ -261,6 +280,17 @@ body {
 
 sub write_t {
     my $self = shift;
+
+    $self->write_file("test.sh", <<'...');
+#!/bin/zsh
+
+if [ $1 ]
+then
+    carton exec prove -cl --timer $1
+else
+    carton exec prove -clr --timer t
+fi
+...
 
     $self->render_file('t/00_compile.t', 'Basic/t/00_compile.t');
 
@@ -391,15 +421,54 @@ sub slurp {
 
 # initialize database
 sub db_cleanup {
-    system("cat db/schema.sql  | mysql -uroot fallwide_blog_test");
-    system("cat db/trigger.sql | mysql -uroot fallwide_blog_test");
+    system("cat db/schema.sql  | mysql -uroot <%= $dist %>_test");
+    system("cat db/trigger.sql | mysql -uroot <%= $dist %>_test");
 }
 
 sub c {
-    fallwide->bootstrap;
+    <%= $dist %>->bootstrap;
 }
 
 1;
+...
+
+    my $path = lc "<<PATH>>";
+    $self->write_file("t/$path/model/user.t", <<'...');
+use strict;
+use warnings;
+use utf8;
+use t::Util;
+use Test::More;
+
+db_cleanup;
+
+my $user1 = c->db->insert('user' => +{ name => "ユーザー1" });
+
+
+subtest 'lookup_by_id' => sub {
+
+    my $user = c->model('User')->lookup_by_id($user1->id);
+
+    is_deeply
+        $user->get_columns,
+        $user1->get_columns,
+        "指定IDのユーザーが取得出来ている"
+    ;
+};
+
+subtest 'lookup_by_name' => sub {
+
+    my $user = c->model('User')->lookup_by_name($user1->name);
+
+    is_deeply
+        $user->get_columns,
+        $user1->get_columns,
+        "指定名のユーザーが取得出来ている"
+    ;
+};
+
+
+done_testing;
 ...
 }
 
@@ -422,7 +491,6 @@ use parent qw/Amon2/;
 
 my $schema = <% $module %>::DB::Schema->instance;
 
-# 時刻
 sub dt {
     my $c = shift;
 
@@ -435,7 +503,6 @@ sub dt {
     return $c->{dt};
 }
 
-# モデル
 sub model {
     my ($c, $model_name) = @_;
 
@@ -646,6 +713,37 @@ sub write_dotfiles {
     my $self = shift;
 
     $self->render_file('.gitignore', 'Basic/dot.gitignore');
+}
+
+sub show_banner {
+    my $self = shift;
+
+    printf <<'...', $self->write_dotfiles;
+--------------------------------------------------------------
+
+Setup script was done! You are ready to run the skelton.
+
+Installing the module:
+
+    > carton install
+
+Database connection settings:
+
+    > vi script/pit.pl
+    > carton exec perl script/pit.pl
+
+Setup database:
+
+    > cd db
+    > sh setup.sh
+
+And then, run your application server:
+
+    > cd ..
+    > carton exec plackup
+
+--------------------------------------------------------------
+...
 }
 
 1;
