@@ -1,6 +1,7 @@
 package Amon2::Setup::Flavor::Aki;
 use strict;
 use warnings;
+use utf8;
 use parent qw/ Amon2::Setup::Flavor /;
 use Amon2::Setup::Asset::jQuery;
 our $VERSION = '0.01';
