@@ -221,6 +221,33 @@ Config::Pit::set('<% $module %>.com.test', data => {
     password => 'password',
 });
 ...
+
+    $self->write_file("script/db_setup.sh", <<'...');
+#!/bin/zsh
+
+cd $(dirname $0)/..
+
+mysql -uroot -e 'CREATE DATABASE IF NOT EXISTS <%= $dist %>      DEFAULT CHARACTER SET utf8;'
+mysql -uroot -e 'CREATE DATABASE IF NOT EXISTS <%= $dist %>_test DEFAULT CHARACTER SET utf8;'
+
+cat db/schema.sql  | mysql -uroot <%= $dist %>
+cat db/schema.sql  | mysql -uroot <%= $dist %>_test
+cat db/trigger.sql | mysql -uroot <%= $dist %>
+cat db/trigger.sql | mysql -uroot <%= $dist %>_test
+...
+
+    $self->write_file("script/test.sh", <<'...');
+#!/bin/zsh
+
+cd $(dirname $0)/..
+
+if [ $1 ]
+then
+    carton exec prove -cl --timer $1
+else
+    carton exec prove -clr --timer t
+fi
+...
 }
 
 sub write_sqlfile {
@@ -250,18 +277,6 @@ END;
 |
 DELIMITER ;
 ...
-
-    $self->write_file("db/setup.sh", <<'...');
-#!/bin/zsh
-
-mysql -uroot -e 'CREATE DATABASE IF NOT EXISTS <%= $dist %>      DEFAULT CHARACTER SET utf8;'
-mysql -uroot -e 'CREATE DATABASE IF NOT EXISTS <%= $dist %>_test DEFAULT CHARACTER SET utf8;'
-
-cat schema.sql  | mysql -uroot <%= $dist %>
-cat schema.sql  | mysql -uroot <%= $dist %>_test
-cat trigger.sql | mysql -uroot <%= $dist %>
-cat trigger.sql | mysql -uroot <%= $dist %>_test
-...
 }
 
 sub write_static {
@@ -280,17 +295,6 @@ body {
 
 sub write_t {
     my $self = shift;
-
-    $self->write_file("test.sh", <<'...');
-#!/bin/zsh
-
-if [ $1 ]
-then
-    carton exec prove -cl --timer $1
-else
-    carton exec prove -clr --timer t
-fi
-...
 
     $self->render_file('t/00_compile.t', 'Basic/t/00_compile.t');
 
@@ -734,12 +738,10 @@ Database connection settings:
 
 Setup database:
 
-    > cd db
-    > sh setup.sh
+    > sh script/setup.sh
 
 And then, run your application server:
 
-    > cd ..
     > carton exec plackup
 
 --------------------------------------------------------------
